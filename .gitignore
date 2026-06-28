@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Server: database, uploads en geheimen — NOOIT pushen
+server/data/
+server/uploads/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#2e7d32" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WandelApp" />
+  <title>WandelApp</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+ <div id="app">
+  <div id="content">
+  <header id="appbar">
+    <h1>WandelApp</h1>
+    <div class="appbar-right">
+      <span id="user-name" class="user-name"></span>
+      <span id="netstatus" class="net" title="Verbinding">●</span>
+      <button id="logout-btn" class="linkbtn" hidden>Afmelden</button>
+    </div>
+  </header>
+
+  <!-- KAART -->
+  <section id="view-map" class="view active">
+    <div id="map"></div>
+    <button id="fab-pin" class="fab" title="Locatie pinnen">📍</button>
+    <input type="file" id="pin-photo-input" accept="image/*" multiple hidden />
+  </section>
+
+  <!-- OPNEMEN -->
+  <section id="view-record" class="view">
+    <div class="panel">
+      <h2>Wandeling opnemen</h2>
+      <div class="stats">
+        <div><span id="rec-distance">0,00</span><small>km</small></div>
+        <div><span id="rec-time">00:00</span><small>tijd</small></div>
+        <div><span id="rec-points">0</span><small>punten</small></div>
+      </div>
+      <div id="rec-status" class="hint">Druk op start om je route te volgen. Houd je scherm aan voor de beste GPS-nauwkeurigheid.</div>
+      <div class="btnrow">
+        <button id="btn-start" class="primary">▶ Start</button>
+        <button id="btn-stop" class="danger" disabled>■ Stop &amp; opslaan</button>
+      </div>
+      <div class="btnrow">
+        <button id="btn-addphoto" disabled>📷 Foto toevoegen</button>
+        <input type="file" id="photo-input" accept="image/*" capture="environment" multiple hidden />
+      </div>
+      <div id="rec-photos" class="thumbstrip"></div>
+    </div>
+  </section>
+
+  <!-- WANDELINGEN -->
+  <section id="view-list" class="view">
+    <div class="panel">
+      <h2>Mijn wandelingen</h2>
+      <div id="walk-list" class="cards"></div>
+      <p id="list-empty" class="hint">Nog geen wandelingen opgenomen.</p>
+    </div>
+  </section>
+
+  <!-- RANKING -->
+  <section id="view-rank" class="view">
+    <div class="panel">
+      <h2>Ranking</h2>
+      <label class="yearpick">Jaar:
+        <select id="rank-year"></select>
+      </label>
+      <div id="rank-list" class="cards"></div>
+      <p id="rank-empty" class="hint">Geef wandelingen een score om de ranking te vullen.</p>
+    </div>
+  </section>
+  <!-- EVENTS -->
+  <section id="view-events" class="view">
+    <div class="panel">
+      <h2>Events</h2>
+      <button class="primary" id="event-new-btn">➕ Nieuw event plannen</button>
+      <div id="event-list" class="cards" style="margin-top:14px"></div>
+      <p id="event-empty" class="hint">Nog geen geplande wandelingen.</p>
+    </div>
+  </section>
+  </div><!-- /content -->
+
+  <!-- DETAIL (overlay) -->
+  <div id="detail" class="overlay" hidden>
+    <div class="overlay-inner">
+      <button id="detail-close" class="closebtn" aria-label="Sluiten">✕</button>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <nav id="tabbar">
+    <button data-view="map" class="active">🗺️<span>Kaart</span></button>
+    <button data-view="record">⏺️<span>Opnemen</span></button>
+    <button data-view="list">📋<span>Lijst</span></button>
+    <button data-view="events">📅<span>Events</span></button>
+    <button data-view="rank">🏆<span>Ranking</span></button>
+  </nav>
+ </div>
+
+  <!-- Inlog-/registratiescherm -->
+  <div id="auth-screen" hidden>
+    <div class="auth-card">
+      <h1>WandelApp</h1>
+      <p class="auth-sub">Meld je aan om je wandelingen met je vrienden te delen.</p>
+      <div class="auth-tabs">
+        <button id="auth-tab-login" type="button" class="active">Inloggen</button>
+        <button id="auth-tab-register" type="button">Registreren</button>
+      </div>
+      <form id="auth-form" autocomplete="on">
+        <input id="auth-username" placeholder="Gebruikersnaam" autocomplete="username" />
+        <input id="auth-display" placeholder="Weergavenaam (zoals je vrienden je zien)" hidden />
+        <input id="auth-password" type="password" placeholder="Wachtwoord" autocomplete="current-password" />
+        <input id="auth-invite" placeholder="Uitnodigingscode" hidden />
+        <p id="auth-error" class="auth-error" hidden></p>
+        <button type="submit" id="auth-submit" class="primary">Inloggen</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="api.js"></script>
+  <script src="sync.js"></script>
+  <script src="events.js"></script>
+  <script src="profile.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

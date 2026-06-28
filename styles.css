@@ -1,0 +1,182 @@
+:root{
+  --green:#2e7d32; --green-d:#1b5e20; --bg:#f4f6f4; --card:#ffffff;
+  --text:#1c241c; --muted:#6b756b; --danger:#c62828; --gold:#f4b400;
+  --shadow:0 2px 8px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg);color:var(--text);
+  height:100dvh;overflow:hidden;
+}
+/* App vult altijd het volledige scherm; layout past zich aan de breedte aan. */
+#app{
+  position:relative;display:flex;flex-direction:column;
+  width:100%;height:100dvh;background:var(--bg);overflow:hidden;
+}
+#content{
+  display:flex;flex-direction:column;flex:1;min-height:0;
+  position:relative;overflow:hidden;
+}
+/* Breed scherm (desktop/tablet): navigatie als zijbalk links, kaart benut de ruimte. */
+@media(min-width:760px){
+  #app{flex-direction:row-reverse}
+  #content{min-width:0}
+}
+#appbar{
+  background:var(--green);color:#fff;display:flex;align-items:center;
+  justify-content:space-between;padding:env(safe-area-inset-top) 16px 0;
+  height:calc(52px + env(safe-area-inset-top));flex:none;box-shadow:var(--shadow);z-index:500;
+}
+#appbar h1{font-size:18px;margin:0;font-weight:600}
+.net{font-size:12px;opacity:.5}
+.net.online{color:#b9f6ca;opacity:1}
+.net.offline{color:#ffcdd2;opacity:1}
+
+.view{flex:1;min-height:0;overflow-y:auto;display:none;-webkit-overflow-scrolling:touch}
+.view.active{display:block}
+#view-map{position:relative}
+#view-map.active{padding:0;overflow:hidden}
+#map{position:absolute;inset:0}
+
+.panel{padding:16px;max-width:680px;margin:0 auto;padding-bottom:80px}
+.panel h2{font-size:17px;margin:4px 0 14px}
+.hint{color:var(--muted);font-size:13px;line-height:1.5}
+
+.stats{display:flex;gap:10px;margin-bottom:14px}
+.stats>div{flex:1;background:var(--card);border-radius:12px;padding:12px;
+  text-align:center;box-shadow:var(--shadow)}
+.stats span{display:block;font-size:24px;font-weight:700;color:var(--green-d)}
+.stats small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+
+.btnrow{display:flex;gap:10px;margin:12px 0}
+button{font-family:inherit;font-size:15px;border:none;border-radius:12px;
+  padding:13px 16px;background:#e8eee8;color:var(--text);font-weight:600;
+  flex:1;cursor:pointer;transition:opacity .15s}
+button:active{opacity:.7}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--green);color:#fff}
+button.danger{background:var(--danger);color:#fff}
+
+.thumbstrip{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.thumbstrip img{width:72px;height:72px;object-fit:cover;border-radius:10px;box-shadow:var(--shadow)}
+
+.cards{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);
+  overflow:hidden;cursor:pointer}
+.card-cover{height:120px;background:#dde4dd;background-size:cover;background-position:center}
+.card-body{padding:12px 14px}
+.card-title{font-weight:700;font-size:15px;margin:0 0 4px}
+.card-meta{color:var(--muted);font-size:12px;display:flex;gap:12px;flex-wrap:wrap}
+.score-badge{display:inline-flex;align-items:center;gap:3px;font-weight:700;color:var(--green-d)}
+.rank-num{font-size:22px;font-weight:800;color:var(--gold);width:34px;text-align:center;flex:none}
+.rank-row{display:flex;align-items:center;gap:10px}
+.rank-row .card{flex:1}
+
+.yearpick{display:block;margin-bottom:14px;font-size:13px;color:var(--muted)}
+.yearpick select{font-size:15px;padding:8px 10px;border-radius:10px;border:1px solid #cdd6cd;background:#fff;margin-left:6px}
+
+.overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:1000;
+  display:flex;align-items:flex-end;justify-content:center}
+/* Zorg dat het hidden-attribuut het paneel echt verbergt (anders wint .overlay). */
+.overlay[hidden]{display:none}
+.overlay-inner{background:var(--bg);width:100%;max-width:680px;max-height:92dvh;
+  border-radius:18px 18px 0 0;overflow-y:auto;position:relative;
+  padding:16px 16px calc(24px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+@media(min-width:760px){
+  .overlay{align-items:center}
+  .overlay-inner{max-width:600px;border-radius:18px;max-height:88dvh}
+}
+.closebtn{position:absolute;top:10px;right:10px;width:36px;height:36px;flex:none;
+  border-radius:50%;background:#fff;box-shadow:var(--shadow);font-size:15px;padding:0}
+#detail-map{height:200px;border-radius:14px;margin:8px 0;overflow:hidden}
+.detail-gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.detail-gallery img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}
+.field{margin:14px 0}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+textarea{width:100%;font-family:inherit;font-size:15px;padding:10px;border-radius:10px;
+  border:1px solid #cdd6cd;resize:vertical;min-height:70px}
+.stars{font-size:30px;letter-spacing:4px;cursor:pointer;user-select:none}
+.stars span{color:#ccc}
+.stars span.on{color:var(--gold)}
+
+#tabbar{display:flex;background:var(--card);box-shadow:0 -2px 8px rgba(0,0,0,.1);
+  flex:none;padding-bottom:env(safe-area-inset-bottom);z-index:600}
+#tabbar button{flex:1;background:none;border-radius:0;display:flex;flex-direction:column;
+  align-items:center;gap:2px;padding:8px 0 6px;font-size:20px;color:var(--muted);font-weight:500}
+#tabbar button span{font-size:10px}
+#tabbar button.active{color:var(--green)}
+@media(min-width:760px){
+  #tabbar{flex-direction:column;width:220px;flex:none;height:100%;
+    box-shadow:2px 0 10px rgba(0,0,0,.08);
+    padding:14px 0 calc(14px + env(safe-area-inset-bottom))}
+  #tabbar button{flex:none;flex-direction:row;justify-content:flex-start;
+    gap:16px;padding:15px 24px;font-size:23px;border-radius:0 24px 24px 0;margin-right:8px}
+  #tabbar button span{font-size:15px}
+  #tabbar button.active{color:var(--green);background:#eaf3ea}
+}
+.photo-pin{font-size:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+.fab{position:absolute;right:16px;bottom:16px;z-index:500;width:54px;height:54px;
+  border-radius:50%;background:var(--green);color:#fff;font-size:24px;flex:none;
+  box-shadow:0 3px 10px rgba(0,0,0,.3);padding:0;display:flex;align-items:center;justify-content:center}
+.fab.armed{background:var(--danger);animation:fabpulse 1s infinite}
+@keyframes fabpulse{50%{opacity:.55}}
+/* Gekleurde pin per gebruiker (druppelvorm) */
+.user-pin{width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+  border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+/* Live GPS-positie */
+.live-dot{width:16px;height:16px;border-radius:50%;background:#1565c0;border:3px solid #fff;
+  box-shadow:0 0 0 rgba(21,101,192,.5);animation:livepulse 1.6s infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(21,101,192,.5)}70%{box-shadow:0 0 0 14px rgba(21,101,192,0)}100%{box-shadow:0 0 0 0 rgba(21,101,192,0)}}
+/* Route tekenen / event-mini-kaart */
+#ev-map,#ev-detail-map{height:240px;border-radius:12px;overflow:hidden;margin:6px 0}
+.draw-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.draw-tools .len{font-weight:700;color:var(--green-d);margin-left:auto}
+.draw-tools button{flex:none;width:auto;padding:8px 12px;font-size:13px}
+/* Profiel */
+.profile-color{display:flex;align-items:center;gap:12px}
+.profile-color input[type=color]{width:54px;height:38px;border:1px solid #cdd6cd;border-radius:8px;padding:2px;background:#fff}
+.profile-sep{border:none;border-top:1px solid #e3e8e3;margin:18px 0}
+.clickable{cursor:pointer}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  background:#323232;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;
+  z-index:2000;box-shadow:var(--shadow);opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* Header rechts + afmelden */
+.appbar-right{display:flex;align-items:center;gap:10px}
+.user-name{color:#fff;font-size:13px;opacity:.9;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkbtn{background:none;color:#fff;font-size:13px;padding:4px 8px;flex:none;width:auto;
+  border:1px solid rgba(255,255,255,.5);border-radius:8px}
+
+/* Inlog-/registratiescherm */
+#auth-screen{position:fixed;inset:0;z-index:3000;background:var(--green);
+  display:flex;align-items:center;justify-content:center;padding:20px}
+/* Zorg dat het hidden-attribuut het scherm echt verbergt (anders wint de regel hierboven). */
+#auth-screen[hidden]{display:none}
+.auth-card{background:#fff;border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.3);
+  padding:24px;width:100%;max-width:380px}
+.auth-card h1{margin:0 0 4px;color:var(--green-d);font-size:24px;text-align:center}
+.auth-sub{margin:0 0 18px;color:var(--muted);font-size:13px;text-align:center}
+.auth-tabs{display:flex;gap:6px;margin-bottom:16px;background:#eef2ee;padding:4px;border-radius:12px}
+.auth-tabs button{flex:1;background:none;color:var(--muted);font-weight:600;border-radius:9px;padding:9px}
+.auth-tabs button.active{background:#fff;color:var(--green-d);box-shadow:var(--shadow)}
+#auth-form{display:flex;flex-direction:column;gap:10px}
+#auth-form input{font-size:16px;padding:12px;border:1px solid #cdd6cd;border-radius:10px;width:100%}
+.auth-error{background:#ffe9e9;color:var(--danger);padding:9px 12px;border-radius:9px;font-size:13px;margin:2px 0}
+
+/* Events */
+.event-when{color:var(--green-d);font-weight:700;font-size:13px}
+.rsvp-row{display:flex;gap:8px;margin-top:10px}
+.rsvp-row button{font-size:13px;padding:9px 6px}
+.rsvp-row button.sel-going{background:var(--green);color:#fff}
+.rsvp-row button.sel-maybe{background:var(--gold);color:#3a2e00}
+.rsvp-row button.sel-declined{background:#e0e0e0;color:#444}
+.attendee{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
+.attendee .st{font-size:12px;color:var(--muted)}
+.badge-mine{display:inline-block;background:#eaf3ea;color:var(--green-d);font-size:10px;
+  padding:1px 6px;border-radius:8px;margin-left:6px;vertical-align:middle}
+.badge-plan{display:inline-block;background:#fff4d6;color:#5a4a00;font-size:10px;
+  padding:1px 6px;border-radius:8px;margin-left:6px;vertical-align:middle}
+.offline-note{background:#fff4d6;color:#5a4a00;padding:8px 12px;border-radius:9px;font-size:13px;margin-bottom:10px}
