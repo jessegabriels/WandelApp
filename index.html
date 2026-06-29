@@ -6,10 +6,13 @@
   <meta name="theme-color" content="#2e7d32" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="WandelApp" />
-  <title>WandelApp</title>
+  <meta name="apple-mobile-web-app-title" content="HikeLog" />
+  <title>HikeLog</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -17,7 +20,7 @@
  <div id="app">
   <div id="content">
   <header id="appbar">
-    <h1>WandelApp</h1>
+    <h1>HikeLog</h1>
     <div class="appbar-right">
       <span id="user-name" class="user-name"></span>
       <span id="netstatus" class="net" title="Verbinding">●</span>
@@ -29,7 +32,7 @@
   <section id="view-map" class="view active">
     <div id="map"></div>
     <button id="fab-pin" class="fab" title="Locatie pinnen">📍</button>
-    <input type="file" id="pin-photo-input" accept="image/*" multiple hidden />
+    <input type="file" id="pin-photo-input" accept="image/*,video/*" multiple hidden />
   </section>
 
   <!-- OPNEMEN -->
@@ -48,7 +51,7 @@
       </div>
       <div class="btnrow">
         <button id="btn-addphoto" disabled>📷 Foto toevoegen</button>
-        <input type="file" id="photo-input" accept="image/*" capture="environment" multiple hidden />
+        <input type="file" id="photo-input" accept="image/*,video/*" multiple hidden />
       </div>
       <div id="rec-photos" class="thumbstrip"></div>
     </div>
@@ -58,7 +61,9 @@
   <section id="view-list" class="view">
     <div class="panel">
       <h2>Mijn wandelingen</h2>
-      <div id="walk-list" class="cards"></div>
+      <div class="btnrow"><button id="gpx-import-btn">📥 GPX importeren</button></div>
+      <input type="file" id="gpx-input" accept=".gpx,application/gpx+xml" hidden />
+      <div id="walk-list" class="cards" style="margin-top:12px"></div>
       <p id="list-empty" class="hint">Nog geen wandelingen opgenomen.</p>
     </div>
   </section>
@@ -105,7 +110,7 @@
   <!-- Inlog-/registratiescherm -->
   <div id="auth-screen" hidden>
     <div class="auth-card">
-      <h1>WandelApp</h1>
+      <h1>HikeLog</h1>
       <p class="auth-sub">Meld je aan om je wandelingen met je vrienden te delen.</p>
       <div class="auth-tabs">
         <button id="auth-tab-login" type="button" class="active">Inloggen</button>
@@ -122,11 +127,28 @@
     </div>
   </div>
 
+  <!-- Mediaviewer (lightbox) -->
+  <div id="viewer" class="viewer" hidden>
+    <button class="viewer-x" id="viewer-close" aria-label="Sluiten">✕</button>
+    <button class="viewer-nav viewer-prev" id="viewer-prev" aria-label="Vorige">‹</button>
+    <button class="viewer-nav viewer-next" id="viewer-next" aria-label="Volgende">›</button>
+    <div class="viewer-stage" id="viewer-stage"></div>
+    <div class="viewer-bar">
+      <span id="viewer-info"></span>
+      <span class="viewer-actions">
+        <button id="viewer-download" title="Downloaden">⬇ Download</button>
+        <button id="viewer-share" title="Delen">📤 Deel</button>
+      </span>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="api.js"></script>
   <script src="sync.js"></script>
   <script src="events.js"></script>
   <script src="profile.js"></script>
+  <script src="viewer.js"></script>
+  <script src="push.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

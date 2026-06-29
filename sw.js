@@ -4,7 +4,7 @@
      blijven offline beschikbaar. (Een heel gebied vooraf downloaden zit niet in
      deze prototype-versie — zie README.) */
 
-const SHELL = 'wandelapp-shell-v10';
+const SHELL = 'wandelapp-shell-v15';
 const TILES = 'wandelapp-tiles-v1';
 
 const SHELL_ASSETS = [
@@ -16,9 +16,14 @@ const SHELL_ASSETS = [
   './sync.js',
   './events.js',
   './profile.js',
+  './viewer.js',
+  './push.js',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './favicon.svg',
+  './favicon.ico',
+  './apple-touch-icon.png',
+  './web-app-manifest-192x192.png',
+  './web-app-manifest-512x512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
@@ -79,5 +84,34 @@ self.addEventListener('fetch', (e) => {
         return res;
       }).catch(() => hit)
     )
+  );
+});
+
+/* ---------- Web push ---------- */
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; }
+  catch { data = { title: 'HikeLog', body: e.data ? e.data.text() : '' }; }
+  const title = data.title || 'HikeLog';
+  const options = {
+    body: data.body || '',
+    icon: './web-app-manifest-192x192.png',
+    badge: './favicon-96x96.png',
+    data: { url: data.url || './', eventId: data.eventId || null }
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const eventId = e.notification.data && e.notification.data.eventId;
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+      for (const c of cs) {
+        if ('focus' in c) { c.focus(); if (eventId) c.postMessage({ type: 'open-event', eventId }); return; }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
   );
 });

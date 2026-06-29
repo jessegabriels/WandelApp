@@ -104,6 +104,13 @@ CREATE TABLE IF NOT EXISTS event_reviews (
   PRIMARY KEY (event_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint   TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sub        TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_photos_walk ON photos(walk_id);
 CREATE INDEX IF NOT EXISTS idx_photos_pin  ON photos(pin_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_walk ON reviews(walk_id);
@@ -119,5 +126,7 @@ addColumn('users', 'color', "TEXT NOT NULL DEFAULT '#2e7d32'");
 addColumn('events', 'route', "TEXT NOT NULL DEFAULT '[]'");
 addColumn('events', 'distance', "REAL NOT NULL DEFAULT 0");
 addColumn('events', 'status', "TEXT NOT NULL DEFAULT 'planned'");
+addColumn('photos', 'full', 'TEXT');
+addColumn('photos', 'kind', "TEXT NOT NULL DEFAULT 'image'");
 
 module.exports = { db, engine };

@@ -56,7 +56,7 @@ const Events = {
     }
   },
 
-  openCreate(){
+  openCreate(prefill){
     if (!(navigator.onLine && Auth.isAuthed())) { toast('Hiervoor is verbinding nodig'); return; }
     const inp = 'style="width:100%;font-size:16px;padding:10px;border:1px solid #cdd6cd;border-radius:10px"';
     const body = document.getElementById('detail-body');
@@ -76,8 +76,9 @@ const Events = {
       <p id="ev-error" class="auth-error" hidden></p>
       <div class="btnrow"><button class="primary" id="ev-save">Plannen</button></div>`;
     document.getElementById('detail').hidden = false;
+    if (prefill && prefill.title) document.getElementById('ev-title').value = prefill.title;
 
-    let pts = [];
+    let pts = (prefill && Array.isArray(prefill.route)) ? prefill.route.slice() : [];
     let evMap = null, line = null, markers = [];
     function redraw(){
       if (line) line.setLatLngs(pts);
@@ -92,6 +93,7 @@ const Events = {
         (p) => evMap.setView([p.coords.latitude, p.coords.longitude], 14), () => {}, { timeout: 6000 });
       line = L.polyline([], { color: '#1565c0', weight: 4 }).addTo(evMap);
       evMap.on('click', (e) => { pts.push([e.latlng.lat, e.latlng.lng]); redraw(); });
+      if (pts.length) { redraw(); if (pts.length > 1) evMap.fitBounds(pts, { padding: [30, 30] }); }
     }, 130);
 
     document.getElementById('ev-undo').addEventListener('click', () => { pts.pop(); redraw(); });
@@ -148,6 +150,7 @@ const Events = {
       ${hasRoute ? '<div id="ev-detail-map"></div>' : ''}
       ${(hasRoute && !completed) ? '<div class="btnrow"><button class="primary" id="ev-start">▶ Start wandeling met deze route</button></div>' : ''}
       ${(isOrganizer && !hasRoute) ? '<div class="btnrow"><button id="ev-recroute">📍 Route nu opnemen (GPS)</button></div>' : ''}
+      ${hasRoute ? '<div class="btnrow"><button id="ev-replan">📅 Opnieuw plannen</button><button id="ev-export">⬇ GPX</button></div>' : ''}
       ${(isOrganizer && !completed) ? '<div class="btnrow"><button class="primary" id="ev-complete">✓ Markeer als uitgevoerd</button></div>' : ''}
       ${!completed ? `<div class="field"><label>Ga je mee?</label>
         <div class="rsvp-row">
@@ -178,6 +181,10 @@ const Events = {
 
     const recBtn = document.getElementById('ev-recroute');
     if (recBtn) recBtn.addEventListener('click', () => { closeDetail(); if (window.recordRouteForEvent) window.recordRouteForEvent(e.id); });
+    const replanBtn = document.getElementById('ev-replan');
+    if (replanBtn) replanBtn.addEventListener('click', () => { closeDetail(); if (window.planEventFromRoute) window.planEventFromRoute(e.route, 'Herhaling: ' + e.title); });
+    const expBtn = document.getElementById('ev-export');
+    if (expBtn) expBtn.addEventListener('click', () => { if (window.exportGpx) window.exportGpx(e.title, e.route); });
 
     const compBtn = document.getElementById('ev-complete');
     if (compBtn) compBtn.addEventListener('click', async () => {

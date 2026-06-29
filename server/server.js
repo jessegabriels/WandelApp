@@ -18,12 +18,14 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const webpush = require('web-push');
 const { db, engine } = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const CLIENT_DIR = process.env.CLIENT_DIR || path.join(__dirname, '..');
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 250);
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 /* JWT-geheim: env, of genereer en bewaar lokaal. */
@@ -40,6 +42,36 @@ let INVITE_CODE = process.env.INVITE_CODE;
 if (!INVITE_CODE) {
   if (fs.existsSync(INVITE_FILE)) INVITE_CODE = fs.readFileSync(INVITE_FILE, 'utf8').trim();
   else { INVITE_CODE = crypto.randomBytes(4).toString('hex'); fs.writeFileSync(INVITE_FILE, INVITE_CODE); }
+}
+
+/* VAPID-sleutels voor web push (zelf-gehost, geen externe dienst). */
+const VAPID_FILE = path.join(DATA_DIR, 'vapid.json');
+let vapid = null;
+try {
+  if (process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE) {
+    vapid = { publicKey: process.env.VAPID_PUBLIC, privateKey: process.env.VAPID_PRIVATE };
+  } else if (fs.existsSync(VAPID_FILE)) {
+    vapid = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+  } else {
+    vapid = webpush.generateVAPIDKeys();
+    fs.writeFileSync(VAPID_FILE, JSON.stringify(vapid));
+  }
+  webpush.setVapidDetails('mailto:hikelog@localhost', vapid.publicKey, vapid.privateKey);
+} catch (e) { console.warn('Web push niet beschikbaar:', e.message); vapid = null; }
+
+// Stuur een melding naar alle geabonneerde gebruikers behalve excludeUserId.
+function sendPush(excludeUserId, payload){
+  if (!vapid) return;
+  const data = JSON.stringify(payload);
+  const subs = db.prepare('SELECT endpoint, sub FROM push_subscriptions WHERE user_id != ?').all(excludeUserId);
+  for (const row of subs) {
+    let s; try { s = JSON.parse(row.sub); } catch { continue; }
+    webpush.sendNotification(s, data).catch((err) => {
+      if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+        db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(row.endpoint);
+      }
+    });
+  }
 }
 
 const uid = () => crypto.randomBytes(9).toString('base64url');
@@ -109,6 +141,21 @@ app.get('/api/me', auth, (req, res) => res.json({ user: pub(req.user) }));
 app.get('/api/users', auth, (req, res) =>
   res.json(db.prepare('SELECT id, username, display_name, color FROM users ORDER BY display_name').all()));
 
+/* ---------- Web push ---------- */
+app.get('/api/push/key', auth, (req, res) => res.json({ key: vapid ? vapid.publicKey : null }));
+app.post('/api/push/subscribe', auth, (req, res) => {
+  const sub = req.body && req.body.subscription;
+  if (!sub || !sub.endpoint) return res.status(400).json({ error: 'Geen subscription' });
+  db.prepare(`INSERT INTO push_subscriptions (endpoint, user_id, sub, created_at) VALUES (?,?,?,?)
+    ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, sub=excluded.sub`)
+    .run(sub.endpoint, req.user.id, JSON.stringify(sub), now());
+  res.json({ ok: true });
+});
+app.post('/api/push/unsubscribe', auth, (req, res) => {
+  if (req.body && req.body.endpoint) db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(req.body.endpoint);
+  res.json({ ok: true });
+});
+
 // Profiel bijwerken (weergavenaam, kleur)
 app.put('/api/me', auth, (req, res) => {
   const { display_name, color } = req.body || {};
@@ -154,7 +201,7 @@ app.get('/api/walks/:id', auth, (req, res) => {
   const w = db.prepare('SELECT w.*, u.display_name AS owner_name, u.color AS owner_color FROM walks w JOIN users u ON u.id=w.owner_id WHERE w.id=?').get(req.params.id);
   if (!w) return res.status(404).json({ error: 'Niet gevonden' });
   w.coords = JSON.parse(w.coords);
-  w.photos = db.prepare('SELECT id, owner_id, thumb, lat, lng, caption, taken_at FROM photos WHERE walk_id=? ORDER BY rowid').all(req.params.id);
+  w.photos = db.prepare('SELECT id, owner_id, thumb, full, kind, lat, lng, caption, taken_at FROM photos WHERE walk_id=? ORDER BY rowid').all(req.params.id);
   w.reviews = db.prepare('SELECT r.*, u.display_name FROM reviews r JOIN users u ON u.id=r.user_id WHERE r.walk_id=?').all(req.params.id);
   res.json(w);
 });
@@ -198,7 +245,7 @@ app.post('/api/pins', auth, (req, res) => {
 app.get('/api/pins/:id', auth, (req, res) => {
   const p = db.prepare('SELECT p.*, u.display_name AS owner_name, u.color AS owner_color FROM pins p JOIN users u ON u.id=p.owner_id WHERE p.id=?').get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Niet gevonden' });
-  p.photos = db.prepare('SELECT id, owner_id, thumb, lat, lng, caption, taken_at FROM photos WHERE pin_id=? ORDER BY rowid').all(req.params.id);
+  p.photos = db.prepare('SELECT id, owner_id, thumb, full, kind, lat, lng, caption, taken_at FROM photos WHERE pin_id=? ORDER BY rowid').all(req.params.id);
   res.json(p);
 });
 app.delete('/api/pins/:id', auth, (req, res) => {
@@ -214,25 +261,37 @@ app.delete('/api/pins/:id', auth, (req, res) => {
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => cb(null, uid() + '.jpg')
+    filename: (req, file, cb) => {
+      let ext = '.jpg';
+      if (file.fieldname === 'full') {
+        const m = (file.originalname || '').match(/\.[a-z0-9]+$/i);
+        ext = m ? m[0].toLowerCase() : ((file.mimetype || '').startsWith('video') ? '.mp4' : '.jpg');
+      }
+      cb(null, uid() + ext);
+    }
   }),
-  limits: { fileSize: 5 * 1024 * 1024 }
+  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 }
 });
 
-app.post('/api/photos', auth, upload.single('thumb'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Geen afbeelding ontvangen' });
+// 'thumb' = kleine voorvertoning (verplicht); 'full' = origineel of video (optioneel).
+app.post('/api/photos', auth, upload.fields([{ name: 'thumb', maxCount: 1 }, { name: 'full', maxCount: 1 }]), (req, res) => {
+  const thumbF = req.files && req.files.thumb && req.files.thumb[0];
+  const fullF = req.files && req.files.full && req.files.full[0];
+  if (!thumbF) return res.status(400).json({ error: 'Geen afbeelding ontvangen' });
   const b = req.body || {};
   const id = b.id || uid();
   if (db.prepare('SELECT 1 FROM photos WHERE id=?').get(id)) {
-    fs.rm(path.join(UPLOAD_DIR, req.file.filename), () => {});
+    fs.rm(path.join(UPLOAD_DIR, thumbF.filename), () => {});
+    if (fullF) fs.rm(path.join(UPLOAD_DIR, fullF.filename), () => {});
     return res.json({ id, existed: true });
   }
-  db.prepare('INSERT INTO photos (id, owner_id, walk_id, pin_id, thumb, lat, lng, caption, taken_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(id, req.user.id, b.walk_id || null, b.pin_id || null, req.file.filename,
+  const kind = b.kind === 'video' ? 'video' : 'image';
+  db.prepare('INSERT INTO photos (id, owner_id, walk_id, pin_id, thumb, full, kind, lat, lng, caption, taken_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, req.user.id, b.walk_id || null, b.pin_id || null, thumbF.filename, fullF ? fullF.filename : null, kind,
       b.lat != null && b.lat !== '' ? Number(b.lat) : null,
       b.lng != null && b.lng !== '' ? Number(b.lng) : null,
       b.caption || '', b.taken_at ? Number(b.taken_at) : null);
-  res.json({ id, thumb: req.file.filename, url: '/uploads/' + req.file.filename });
+  res.json({ id, thumb: thumbF.filename, full: fullF ? fullF.filename : null, kind, url: '/uploads/' + thumbF.filename });
 });
 
 /* ---------- Events met RSVP ---------- */
@@ -255,6 +314,11 @@ app.post('/api/events', auth, (req, res) => {
   db.prepare('INSERT INTO events (id, creator_id, title, description, walk_id, planned_at, lat, lng, route, distance, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(id, req.user.id, title, description || '', walk_id || null, planned_at, lat != null ? lat : null, lng != null ? lng : null, JSON.stringify(rt), dist, now());
   db.prepare('INSERT INTO rsvps (event_id, user_id, status, responded_at) VALUES (?,?,?,?)').run(id, req.user.id, 'going', now());
+  sendPush(req.user.id, {
+    title: 'Nieuwe wandeling gepland',
+    body: `${req.user.display_name} plande "${title}" (${String(planned_at).replace('T', ' ')})`,
+    url: './', eventId: id
+  });
   res.json({ id });
 });
 
@@ -326,12 +390,12 @@ app.delete('/api/events/:id', auth, (req, res) => {
 });
 
 /* ---------- Statisch + start ---------- */
-app.get('/api/health', (req, res) => res.json({ ok: true, time: now(), engine }));
+app.get('/api/health', (req, res) => res.json({ ok: true, time: now(), engine, maxUploadMb: MAX_UPLOAD_MB }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 app.use(express.static(CLIENT_DIR));
 
 app.listen(PORT, () => {
-  console.log(`WandelApp-server draait op http://localhost:${PORT}  (opslag: ${engine})`);
+  console.log(`HikeLog-server draait op http://localhost:${PORT}  (opslag: ${engine})`);
   console.log(`Frontend vanuit: ${CLIENT_DIR}`);
   console.log(`Uitnodigingscode voor registratie: ${INVITE_CODE}`);
 });

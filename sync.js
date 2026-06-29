@@ -50,22 +50,38 @@ const Sync = {
         p.synced = true; await put('pins', p);
       } catch {}
     }
-    // 3) Foto-thumbnails (origineel blijft lokaal)
+    // 3) Foto's/video's: thumbnail + volledig origineel. Een video groter dan de
+    //    serverlimiet blijft lokaal (enkel de poster wordt gedeeld).
+    const maxBytes = await this.maxUploadBytes();
     for (const ph of await getAll('photos')) {
       if (ph.synced || !ph.thumb) continue;
       try {
         const form = new FormData();
         form.append('thumb', ph.thumb, ph.id + '.jpg');
         form.append('id', ph.id);
+        form.append('kind', ph.kind || 'image');
         if (ph.walkId) form.append('walk_id', ph.walkId);
         if (ph.pinId) form.append('pin_id', ph.pinId);
         if (ph.lat != null) form.append('lat', ph.lat);
         if (ph.lng != null) form.append('lng', ph.lng);
         if (ph.takenAt) form.append('taken_at', ph.takenAt);
+        const tooBigVideo = (ph.kind === 'video') && ph.blob && ph.blob.size > maxBytes;
+        if (ph.blob && !tooBigVideo) {
+          form.append('full', ph.blob, ph.blob.name || (ph.id + (ph.kind === 'video' ? '.mp4' : '.jpg')));
+        }
         await api('/api/photos', { form });
         ph.synced = true; await put('photos', ph);
       } catch {}
     }
+  },
+
+  _maxBytes: null,
+  async maxUploadBytes(){
+    if (this._maxBytes != null) return this._maxBytes;
+    let mb = 250;
+    try { const h = await api('/api/health', { auth: false }); if (h && h.maxUploadMb) mb = h.maxUploadMb; } catch {}
+    this._maxBytes = mb * 1024 * 1024;
+    return this._maxBytes;
   },
 
   async fullSync(){ await this.push(); },
@@ -125,7 +141,7 @@ const Sync = {
           id: w.id, name: w.name, date: w.date, distance: w.distance,
           durationSec: w.duration, coords: w.coords || [],
           owner_name: w.owner_name, mine: w.owner_id === me.id, isRemote: true,
-          photos: (w.photos || []).map(p => ({ id: p.id, url: '/uploads/' + p.thumb, lat: p.lat, lng: p.lng, caption: p.caption })),
+          photos: (w.photos || []).map(p => ({ id: p.id, url: '/uploads/' + p.thumb, fullUrl: p.full ? '/uploads/' + p.full : null, kind: p.kind || 'image', lat: p.lat, lng: p.lng, caption: p.caption })),
           reviews: w.reviews || [],
           myReview: (w.reviews || []).find(r => r.user_id === me.id) || null
         };
@@ -137,7 +153,7 @@ const Sync = {
     return {
       id: w.id, name: w.name, date: w.date, distance: w.distance, durationSec: w.durationSec,
       coords: w.coords || [], owner_name: 'Ik', mine: true, isRemote: false,
-      photos: photos.map(p => ({ id: p.id, blob: p.blob, thumb: p.thumb, lat: p.lat, lng: p.lng })),
+      photos: photos.map(p => ({ id: p.id, blob: p.blob, thumb: p.thumb, kind: p.kind || 'image', lat: p.lat, lng: p.lng })),
       reviews: [], myReview: w.score ? { score: w.score, text: w.review } : null,
       localScore: w.score || 0, localReview: w.review || ''
     };
@@ -151,7 +167,7 @@ const Sync = {
         return {
           id: p.id, name: p.name, lat: p.lat, lng: p.lng, owner_name: p.owner_name,
           mine: p.owner_id === me.id, isRemote: true,
-          photos: (p.photos || []).map(ph => ({ id: ph.id, url: '/uploads/' + ph.thumb, lat: ph.lat, lng: ph.lng, caption: ph.caption }))
+          photos: (p.photos || []).map(ph => ({ id: ph.id, url: '/uploads/' + ph.thumb, fullUrl: ph.full ? '/uploads/' + ph.full : null, kind: ph.kind || 'image', lat: ph.lat, lng: ph.lng, caption: ph.caption }))
         };
       } catch {}
     }
@@ -159,7 +175,7 @@ const Sync = {
     if (!p) return null;
     const photos = await photosForPin(id);
     return { id: p.id, name: p.name, lat: p.lat, lng: p.lng, mine: true, isRemote: false,
-      photos: photos.map(ph => ({ id: ph.id, blob: ph.blob, thumb: ph.thumb, lat: ph.lat, lng: ph.lng })) };
+      photos: photos.map(ph => ({ id: ph.id, blob: ph.blob, thumb: ph.thumb, kind: ph.kind || 'image', lat: ph.lat, lng: ph.lng })) };
   },
 
   // Mijn review opslaan: bij een server-wandeling rechtstreeks pushen.

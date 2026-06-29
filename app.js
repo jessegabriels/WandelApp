@@ -114,6 +114,33 @@ function makeThumb(file, maxSize = 400){
     img.src = URL.createObjectURL(file);
   });
 }
+/* Posterbeeld (thumbnail) uit een videobestand. */
+function makeVideoPoster(file){
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    const url = URL.createObjectURL(file);
+    const done = (blob) => { URL.revokeObjectURL(url); resolve(blob); };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch (e) {} };
+    v.onseeked = () => {
+      try {
+        const scale = Math.min(1, 640 / Math.max(v.videoWidth || 640, v.videoHeight || 480));
+        const c = document.createElement('canvas');
+        c.width = Math.round((v.videoWidth || 640) * scale);
+        c.height = Math.round((v.videoHeight || 480) * scale);
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob((b) => done(b), 'image/jpeg', 0.8);
+      } catch (e) { done(null); }
+    };
+    v.onerror = () => done(null);
+    v.src = url;
+  });
+}
+/* Thumbnail uit een foto- of videobestand. */
+async function makeMediaThumb(file){
+  if (file.type && file.type.startsWith('video')) return (await makeVideoPoster(file)) || file;
+  return makeThumb(file);
+}
 /* Lees EXIF GPS uit JPEG indien aanwezig (best effort, geen externe library). */
 function readExifGps(file){
   return new Promise((resolve) => {
@@ -202,6 +229,24 @@ function initMap(){
   // Locatie pinnen: knop wapent, daarna plaatst een tik op de kaart een pin.
   $('#fab-pin').addEventListener('click', togglePinMode);
   map.on('click', onMapClickForPin);
+  watchMyLocation();
+}
+
+/* Toon en update voortdurend je huidige GPS-positie als 'jij bent hier'-stip. */
+let locMarker = null, locWatchId = null;
+function watchMyLocation(){
+  if (!navigator.geolocation || locWatchId != null) return;
+  locWatchId = navigator.geolocation.watchPosition((p) => {
+    const c = [p.coords.latitude, p.coords.longitude];
+    if (!locMarker) {
+      locMarker = L.marker(c, {
+        icon: L.divIcon({ className: '', html: '<div class="live-dot"></div>', iconSize: [16,16] }),
+        interactive: false, zIndexOffset: 1000
+      }).addTo(map);
+    } else {
+      locMarker.setLatLng(c);
+    }
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
 }
 
 let pinArming = false;
@@ -228,15 +273,8 @@ async function onMapClickForPin(e){
 async function renderOverview(){
   overviewLayer.clearLayers();
   const bounds = [];
-  // Routes van de hele groep (server) of lokaal als fallback, in de kleur van de eigenaar
-  const walks = await Sync.listWalks();
-  for (const w of walks) {
-    if (w.coords && w.coords.length > 1) {
-      L.polyline(w.coords, { color: w.color || '#2e7d32', weight: 4, opacity: .85 })
-        .addTo(overviewLayer).on('click', () => openDetail(w.id));
-      w.coords.forEach((c) => bounds.push(c));
-    }
-  }
+  // Op de hoofdkaart tonen we GEEN afgelegde routes (die zie je in het wandeldetail),
+  // enkel foto's, gepinde locaties en je live-positie.
   // Eigen lokale foto-markers — maar NIET voor foto's die bij een pin horen (pin heeft voorrang)
   for (const ph of await getAll('photos')) {
     if (ph.pinId) continue;
@@ -277,6 +315,13 @@ window.recordRouteForEvent = function(eventId){
   recordingForEvent = eventId;
   startRecording();
   toast('Neem de route op en druk daarna op ■ Stop');
+};
+
+/* Bestaande route hergebruiken: plan er een nieuw event mee (voorgevuld). */
+window.planEventFromRoute = function(route, title){
+  if (!route || route.length < 2) { toast('Geen route beschikbaar'); return; }
+  showView('events');
+  if (window.Events) Events.openCreate({ route: route, title: title || '' });
 };
 function drawPlanned(){
   if (plannedLayer) { map.removeLayer(plannedLayer); plannedLayer = null; }
@@ -325,7 +370,6 @@ function startRecording(){
   rec.line = L.polyline([], { color: '#c62828', weight: 5 }).addTo(map);
   rec.watchId = navigator.geolocation.watchPosition((pos) => {
     const c = [pos.coords.latitude, pos.coords.longitude];
-    updateLiveMarker(c);
     const last = rec.coords[rec.coords.length - 1];
     // negeer sprongen < 3m (ruis) en onrealistische uitschieters
     if (!last || haversine(last, c) >= 3) {
@@ -351,16 +395,17 @@ function startRecording(){
 
 async function addPhotos(files){
   for (const file of files) {
-    const thumb = await makeThumb(file);
-    let loc = await readExifGps(file); // GPS uit foto-metadata
+    const kind = (file.type && file.type.startsWith('video')) ? 'video' : 'image';
+    const thumb = await makeMediaThumb(file);
+    let loc = (kind === 'image') ? await readExifGps(file) : null; // GPS uit foto-metadata
     if (!loc && rec && rec.coords.length) loc = rec.coords[rec.coords.length - 1]; // val terug op huidige positie
-    const photo = { file, thumb, lat: loc ? loc[0] : null, lng: loc ? loc[1] : null, takenAt: Date.now() };
+    const photo = { file, thumb, kind, lat: loc ? loc[0] : null, lng: loc ? loc[1] : null, takenAt: Date.now() };
     if (rec) rec.photos.push(photo);
     const img = document.createElement('img');
     img.src = URL.createObjectURL(thumb);
     $('#rec-photos').appendChild(img);
   }
-  toast(files.length + ' foto(\'s) toegevoegd');
+  toast(files.length + ' item(s) toegevoegd');
 }
 
 async function stopRecording(){
@@ -406,7 +451,7 @@ async function stopRecording(){
   await put('walks', walk);
   for (const p of rec.photos) {
     await put('photos', {
-      id: uid(), walkId: walk.id, blob: p.file, thumb: p.thumb,
+      id: uid(), walkId: walk.id, blob: p.file, thumb: p.thumb, kind: p.kind || 'image',
       lat: p.lat, lng: p.lng, takenAt: p.takenAt
     });
   }
@@ -545,6 +590,10 @@ async function openDetail(walkId){
       <textarea id="review-text" placeholder="Hoe was de wandeling?"></textarea>
     </div>
     ${(w.reviews && w.reviews.length) ? `<div class="field"><label>Reviews van de groep</label>${w.reviews.map((r) => `<div class="attendee"><span>${escapeHtml(r.display_name || '')} ⭐ ${r.score}/5</span><span class="st">${escapeHtml(r.text || '')}</span></div>`).join('')}</div>` : ''}
+    ${(w.coords && w.coords.length > 1) ? `<div class="btnrow">
+      <button id="plan-from-walk">📅 Plan event met deze route</button>
+      <button id="export-walk">⬇ GPX</button>
+    </div>` : ''}
     <div class="btnrow">
       <button class="primary" id="save-review">Review opslaan</button>
       ${w.mine ? '<button class="danger" id="delete-walk">Verwijderen</button>' : ''}
@@ -579,14 +628,8 @@ async function openDetail(walkId){
     else detailMap.setView([50.85, 4.35], 9);
   }, 80);
 
-  // galerij (thumbnail uit blob of server-url; klik = volledige weergave)
-  const gal = $('#detail-gallery');
-  photos.forEach((ph) => {
-    const img = document.createElement('img');
-    img.src = photoThumbSrc(ph);
-    img.addEventListener('click', () => window.open(photoFullSrc(ph), '_blank'));
-    gal.appendChild(img);
-  });
+  // galerij — opent de in-app viewer (volle kwaliteit, video, download/delen)
+  renderGallery($('#detail-gallery'), photos);
 
   // sterren
   let score = myScore;
@@ -628,6 +671,11 @@ async function openDetail(walkId){
       renderOverview();
     } catch (err) { toast(err.message || 'Verwijderen mislukt'); }
   });
+
+  const planBtn = $('#plan-from-walk');
+  if (planBtn) planBtn.addEventListener('click', () => { closeDetail(); window.planEventFromRoute(w.coords, 'Herhaling: ' + w.name); });
+  const expBtn = $('#export-walk');
+  if (expBtn) expBtn.addEventListener('click', () => exportGpx(w.name, w.coords));
 }
 function closeDetail(){
   $('#detail').hidden = true;
@@ -656,13 +704,8 @@ async function openPinDetail(pinId){
   $('#detail').hidden = false;
 
   const gal = $('#detail-gallery');
-  if (!photos.length) gal.innerHTML = '<p class="hint">Nog geen foto\'s op deze plek.</p>';
-  photos.forEach((ph) => {
-    const img = document.createElement('img');
-    img.src = photoThumbSrc(ph);
-    img.addEventListener('click', () => window.open(photoFullSrc(ph), '_blank'));
-    gal.appendChild(img);
-  });
+  if (!photos.length) gal.innerHTML = '<p class="hint">Nog geen foto\'s of video\'s op deze plek.</p>';
+  else renderGallery(gal, photos);
 
   const addBtn = $('#pin-add-photo');
   if (addBtn) addBtn.addEventListener('click', () => { currentPinId = pinId; $('#pin-photo-input').click(); });
@@ -683,15 +726,16 @@ async function openPinDetail(pinId){
 async function addPhotosToPin(pinId, files){
   const pin = await getOne('pins', pinId);
   for (const file of files) {
-    const thumb = await makeThumb(file);
-    let loc = await readExifGps(file);
+    const kind = (file.type && file.type.startsWith('video')) ? 'video' : 'image';
+    const thumb = await makeMediaThumb(file);
+    let loc = (kind === 'image') ? await readExifGps(file) : null;
     if (!loc && pin) loc = [pin.lat, pin.lng];
     await put('photos', {
-      id: uid(), pinId, walkId: null, blob: file, thumb,
+      id: uid(), pinId, walkId: null, blob: file, thumb, kind,
       lat: loc ? loc[0] : null, lng: loc ? loc[1] : null, takenAt: Date.now()
     });
   }
-  toast(files.length + ' foto(\'s) toegevoegd');
+  toast(files.length + ' item(s) toegevoegd');
 }
 
 $('#pin-photo-input').addEventListener('change', async (e) => {
@@ -708,6 +752,79 @@ $('#pin-photo-input').addEventListener('change', async (e) => {
 /* Foto-bron: lokale blob (origineel/thumb) of server-URL (groepsfoto's). */
 function photoThumbSrc(ph){ return ph.thumb ? URL.createObjectURL(ph.thumb) : ph.url; }
 function photoFullSrc(ph){ return ph.blob ? URL.createObjectURL(ph.blob) : (ph.url || (ph.thumb ? URL.createObjectURL(ph.thumb) : '')); }
+/* Zet foto-/video-objecten om naar items voor de in-app viewer. */
+function toMediaItems(photos){
+  return (photos || []).map((ph) => ({
+    kind: ph.kind || 'image',
+    thumbUrl: ph.thumb ? URL.createObjectURL(ph.thumb) : ph.url,
+    fullUrl: ph.blob ? URL.createObjectURL(ph.blob) : (ph.fullUrl || null),
+    blob: ph.blob || null,
+    caption: ph.caption || '',
+    name: ph.id || 'media'
+  }));
+}
+/* Toon een galerij van thumbnails die de in-app viewer openen. */
+function renderGallery(gal, photos){
+  const media = toMediaItems(photos);
+  photos.forEach((ph, i) => {
+    const wrap = document.createElement('div'); wrap.className = 'thumb-wrap';
+    const img = document.createElement('img'); img.src = photoThumbSrc(ph);
+    wrap.appendChild(img);
+    if ((ph.kind || 'image') === 'video') {
+      const pl = document.createElement('div'); pl.className = 'play-badge'; pl.textContent = '▶'; wrap.appendChild(pl);
+    }
+    wrap.addEventListener('click', () => openMediaViewer(media, i));
+    gal.appendChild(wrap);
+  });
+}
+
+/* ---------- GPX import / export ---------- */
+function buildGpx(name, coords){
+  const pts = (coords || []).map((c) => `<trkpt lat="${c[0]}" lon="${c[1]}"></trkpt>`).join('');
+  const safe = String(name || 'route').replace(/[<&>]/g, '');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="HikeLog" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${safe}</name><trkseg>${pts}</trkseg></trk>\n</gpx>`;
+}
+function exportGpx(name, coords){
+  if (!coords || coords.length < 1) { toast('Geen route om te exporteren'); return; }
+  const blob = new Blob([buildGpx(name, coords)], { type: 'application/gpx+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (String(name || 'route').replace(/[^\w-]+/g, '_') || 'route') + '.gpx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+window.exportGpx = exportGpx;
+
+function parseGpx(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const coords = [...doc.querySelectorAll('trkpt, rtept')]
+    .map((p) => [parseFloat(p.getAttribute('lat')), parseFloat(p.getAttribute('lon'))])
+    .filter((c) => !isNaN(c[0]) && !isNaN(c[1]));
+  const nm = doc.querySelector('trk > name, metadata > name, rte > name');
+  return { name: nm ? nm.textContent.trim() : '', coords };
+}
+async function importGpxFile(file){
+  let text;
+  try { text = await file.text(); } catch { toast('Kon bestand niet lezen'); return; }
+  const { name, coords } = parseGpx(text);
+  if (coords.length < 2) { toast('Geen route gevonden in dit GPX-bestand'); return; }
+  const walk = {
+    id: uid(), name: name || file.name.replace(/\.gpx$/i, '') || 'Geïmporteerde route',
+    date: Date.now(), coords, distance: routeDistance(coords), durationSec: 0,
+    review: '', score: 0, createdAt: Date.now()
+  };
+  await put('walks', walk);
+  if (Sync.online()) { try { await Sync.push(); } catch {} }
+  toast('Route geïmporteerd: ' + walk.name);
+  await renderOverview();
+  renderList();
+}
+{
+  const gpxBtn = document.getElementById('gpx-import-btn');
+  if (gpxBtn) gpxBtn.addEventListener('click', () => document.getElementById('gpx-input').click());
+  const gpxInput = document.getElementById('gpx-input');
+  if (gpxInput) gpxInput.addEventListener('change', (e) => { if (e.target.files[0]) importGpxFile(e.target.files[0]); e.target.value = ''; });
+}
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, (c) =>
@@ -760,3 +877,13 @@ async function onAuthed(){
 })();
 
 window.addEventListener('online', () => { if (window.Sync) Sync.pushSoon(); });
+
+// Een aangetikte melding opent het bijbehorende event.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'open-event' && e.data.eventId && window.Events) {
+      showView('events');
+      Events.openDetail(e.data.eventId);
+    }
+  });
+}

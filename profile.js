@@ -22,6 +22,12 @@ const Profile = {
       <div class="btnrow"><button class="primary" id="pf-save">Profiel opslaan</button></div>
 
       <hr class="profile-sep" />
+      <h3 style="font-size:15px;margin:0 0 8px">Meldingen</h3>
+      <p class="hint" style="margin-bottom:8px">Krijg een melding wanneer iemand een nieuw event plant, zodat je kunt doorgeven of je meegaat.</p>
+      <div class="btnrow"><button id="pf-notif">Meldingen aanzetten</button></div>
+      <p id="pf-notif-msg" class="hint" style="margin-top:6px"></p>
+
+      <hr class="profile-sep" />
       <h3 style="font-size:15px;margin:0 0 8px">Wachtwoord wijzigen</h3>
       <div class="field"><label>Huidig wachtwoord</label><input id="pf-cur" type="password" ${inp} /></div>
       <div class="field"><label>Nieuw wachtwoord (min. 6 tekens)</label><input id="pf-new" type="password" ${inp} /></div>
@@ -64,6 +70,30 @@ const Profile = {
       try { localStorage.setItem('wa_ors_key', document.getElementById('pf-ors').value.trim()); } catch {}
       if (window.toast) toast('Sleutel bewaard');
     });
+
+    // Meldingen aan/uit
+    (async () => {
+      const btn = document.getElementById('pf-notif');
+      const msg = document.getElementById('pf-notif-msg');
+      if (!btn) return;
+      async function refresh(){
+        const st = window.Push ? await Push.status() : 'unsupported';
+        btn.disabled = (st === 'unsupported' || st === 'denied');
+        if (st === 'unsupported') { btn.textContent = 'Niet ondersteund'; msg.textContent = 'Meldingen worden hier niet ondersteund. Op iPhone: installeer de app eerst op je beginscherm.'; }
+        else if (st === 'denied') { btn.textContent = 'Geblokkeerd'; msg.textContent = 'Meldingen zijn geblokkeerd. Sta ze toe in je browser-/systeeminstellingen.'; }
+        else if (st === 'on') { btn.textContent = 'Meldingen uitzetten'; msg.textContent = 'Meldingen staan aan.'; }
+        else { btn.textContent = 'Meldingen aanzetten'; msg.textContent = ''; }
+      }
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; msg.textContent = 'Even geduld…';
+        try {
+          const st = await Push.status();
+          if (st === 'on') await Push.disable(); else await Push.enable();
+        } catch (e) { msg.textContent = e.message || 'Mislukt'; }
+        await refresh();
+      });
+      refresh();
+    })();
   }
 };
 
